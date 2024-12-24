@@ -40,7 +40,6 @@ async function generateTitles(topic) {
   }
 }
 
-
 // Elsevier journal search functions
 async function searchJournals(title) {
   const url = "https://api.elsevier.com/content/serial/title";
@@ -65,8 +64,12 @@ async function searchJournals(title) {
     return journals
       .map((journal) => ({
         title: journal["dc:title"] || "N/A",
-        citeScore: journal.citeScoreYearInfoList?.citeScoreCurrentMetric || "N/A",
-        scopusLink: journal.link.find((link) => link["@ref"] === "scopus-source")?.["@href"] || "N/A",
+        citeScore:
+          journal.citeScoreYearInfoList?.citeScoreCurrentMetric || "N/A",
+        scopusLink:
+          journal.link.find((link) => link["@ref"] === "scopus-source")?.[
+            "@href"
+          ] || "N/A",
       }))
       .sort((a, b) => {
         if (a.citeScore === "N/A") return 1;
@@ -79,8 +82,6 @@ async function searchJournals(title) {
     throw error;
   }
 }
-
-
 
 // Webhook verification
 app.get("/webhook", (req, res) => {
@@ -98,12 +99,12 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-
 // WhatsApp message sending functions
-async function sendWhatsAppMessage(to, message) {  // For regular text messages
-    const url = `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
-    try {
-      const MAX_MESSAGE_LENGTH = 4096;
+async function sendWhatsAppMessage(to, message) {
+  // For regular text messages
+  const url = `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  try {
+    const MAX_MESSAGE_LENGTH = 4096;
     for (let i = 0; i < message.length; i += MAX_MESSAGE_LENGTH) {
       const chunk = message.slice(i, i + MAX_MESSAGE_LENGTH);
       const body = {
@@ -111,7 +112,6 @@ async function sendWhatsAppMessage(to, message) {  // For regular text messages
         to: to,
         text: { body: chunk },
       };
-
 
       const response = await fetch(url, {
         method: "POST",
@@ -122,19 +122,18 @@ async function sendWhatsAppMessage(to, message) {  // For regular text messages
         body: JSON.stringify(body),
       });
 
-        if (!response.ok) {
-            throw new Error(`WhatsApp API Error: ${response.status}`);
-        }
+      if (!response.ok) {
+        throw new Error(`WhatsApp API Error: ${response.status}`);
+      }
     }
-
-
-    } catch (error) {
-        console.error('Error sending WhatsApp message:', error);
-        throw error;
-    }
+  } catch (error) {
+    console.error("Error sending WhatsApp message:", error);
+    throw error;
+  }
 }
 
-async function sendWhatsAppMessageWithButtons(to, message, buttons) { // For messages with buttons
+async function sendWhatsAppMessageWithButtons(to, message, buttons) {
+  // For messages with buttons
   const url = `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
 
   try {
@@ -165,21 +164,18 @@ async function sendWhatsAppMessageWithButtons(to, message, buttons) { // For mes
     if (!response.ok) {
       const responseText = await response.text();
       console.error("WhatsApp API Error:", response.status, responseText);
-      throw new Error(`WhatsApp API Error: ${response.status} - ${responseText}`);
+      throw new Error(
+        `WhatsApp API Error: ${response.status} - ${responseText}`
+      );
     }
 
     const responseData = await response.json();
     console.log("WhatsApp API response:", responseData);
-
-
   } catch (error) {
     console.error("Error sending WhatsApp message:", error);
-    throw error; 
+    throw error;
   }
 }
-
-
-
 
 // Initial greeting with buttons
 async function sendGreeting(phoneNumber) {
@@ -204,106 +200,111 @@ async function sendGreeting(phoneNumber) {
   await sendWhatsAppMessageWithButtons(phoneNumber, message, buttons);
 }
 
-
-
 // Webhook endpoint
 app.post("/webhook", async (req, res) => {
   try {
     const body = req.body;
-  if (body.object) {
-    if (
-      body.entry &&
-      body.entry[0] &&
-      body.entry[0].changes &&
-      body.entry[0].changes[0] &&
-      body.entry[0].changes[0].value &&
-      body.entry[0].changes[0].value.messages &&
-      body.entry[0].changes[0].value.messages[0]
-    ) {
-
-      const messageData = body.entry[0].changes[0].value.messages[0];
-      const phoneNumber = messageData.from;
-      let message = "";
-      if (messageData.text) {
-        message = messageData.text.body;
-      }
-      const messageId = messageData.id;
-
-      if (processedMessages.has(messageId)) {
-        return res.status(200).send("Message already processed");
-      }
-      processedMessages.add(messageId);
-
-
-
-      if (messageData.interactive) {  // Check for button clicks
-        const buttonId = messageData.interactive.button_reply.id;
-
-        if (buttonId === "get_topics") {
-          userState[phoneNumber] = "waiting_for_topic";
-          await sendWhatsAppMessage(phoneNumber, "Please enter the topic for your research paper:");
-        } else if (buttonId === "search_journals") {
-          userState[phoneNumber] = "waiting_for_journal_title";
-          await sendWhatsAppMessage(phoneNumber, "Please enter the journal title to search for:");
+    if (body.object) {
+      if (
+        body.entry &&
+        body.entry[0] &&
+        body.entry[0].changes &&
+        body.entry[0].changes[0] &&
+        body.entry[0].changes[0].value &&
+        body.entry[0].changes[0].value.messages &&
+        body.entry[0].changes[0].value.messages[0]
+      ) {
+        const messageData = body.entry[0].changes[0].value.messages[0];
+        const phoneNumber = messageData.from;
+        let message = "";
+        if (messageData.text) {
+          message = messageData.text.body;
         }
+        const messageId = messageData.id;
 
-      } else if (userState[phoneNumber] === "waiting_for_topic") { // Gemini topic generation
-        try {
-          const titles = await generateTitles(message);
-          await sendWhatsAppMessage(phoneNumber, titles);
-          delete userState[phoneNumber];
-        } catch (error) {
-          console.error("Error generating titles", error);
-          await sendWhatsAppMessage(
-            phoneNumber,
-            "Error processing your message. Please try again."
-          );
-          delete userState[phoneNumber];
+        if (processedMessages.has(messageId)) {
+          return res.status(200).send("Message already processed");
         }
+        processedMessages.add(messageId);
 
+        if (messageData.interactive) {
+          const buttonId = messageData.interactive.button_reply.id;
 
-      } else if (userState[phoneNumber] === "waiting_for_journal_title") {  // Elsevier journal search
-        try {
-          const journals = await searchJournals(message);
-
-          if (journals.length === 0) {
+          if (buttonId === "get_topics") {
+            userState[phoneNumber] = "waiting_for_topic";
             await sendWhatsAppMessage(
               phoneNumber,
-              "No journals found matching your search criteria."
+              "Please enter the topic for your research paper:"
             );
-          } else {
-            let responseMessage = `Top ${journals.length} journals matching "${message}":\n\n`;
-            journals.forEach((journal, index) => {
-              responseMessage += `${index + 1}. ${journal.title}\n`;
-              responseMessage += `   CiteScore: ${journal.citeScore}\n`;
-              responseMessage += `   Scopus: ${journal.scopusLink}\n\n`;
-            });
-            await sendWhatsAppMessage(phoneNumber, responseMessage);
+          } else if (buttonId === "search_journals") {
+            userState[phoneNumber] = "waiting_for_journal_title";
+            await sendWhatsAppMessage(
+              phoneNumber,
+              "Please enter the journal title to search for:"
+            );
           }
-          delete userState[phoneNumber]; // Reset user state
-        } catch (error) {
-          console.error("Error searching for journals", error);
-          await sendWhatsAppMessage(
-            phoneNumber,
-            "Error searching journals. Please try again."
-          );
-          delete userState[phoneNumber];
-        }
+        } else if (userState[phoneNumber] === "waiting_for_topic") {
+          try {
+            const titles = await generateTitles(message);
+            await sendWhatsAppMessage(phoneNumber, titles);
+            // Send options again after titles
+            setTimeout(async () => {
+              await sendGreeting(phoneNumber);
+            }, 1000);
+            delete userState[phoneNumber];
+          } catch (error) {
+            console.error("Error generating titles", error);
+            await sendWhatsAppMessage(
+              phoneNumber,
+              "Error processing your message. Please try again."
+            );
+            // Send options again after error
+            setTimeout(async () => {
+              await sendGreeting(phoneNumber);
+            }, 1000);
+            delete userState[phoneNumber];
+          }
+        } else if (userState[phoneNumber] === "waiting_for_journal_title") {
+          try {
+            const journals = await searchJournals(message);
 
-
-
-      } else {
-        // New user - Send the greeting
-        if (!userState[phoneNumber]) {
+            if (journals.length === 0) {
+              await sendWhatsAppMessage(
+                phoneNumber,
+                "No journals found matching your search criteria."
+              );
+            } else {
+              let responseMessage = `Top ${journals.length} journals matching "${message}":\n\n`;
+              journals.forEach((journal, index) => {
+                responseMessage += `${index + 1}. ${journal.title}\n`;
+                responseMessage += `   CiteScore: ${journal.citeScore}\n`;
+                responseMessage += `   Scopus: ${journal.scopusLink}\n\n`;
+              });
+              await sendWhatsAppMessage(phoneNumber, responseMessage);
+            }
+            // Send options again after journal results
+            setTimeout(async () => {
+              await sendGreeting(phoneNumber);
+            }, 1000);
+            delete userState[phoneNumber];
+          } catch (error) {
+            console.error("Error searching for journals", error);
+            await sendWhatsAppMessage(
+              phoneNumber,
+              "Error searching journals. Please try again."
+            );
+            // Send options again after error
+            setTimeout(async () => {
+              await sendGreeting(phoneNumber);
+            }, 1000);
+            delete userState[phoneNumber];
+          }
+        } else {
+          // New user or message "hi" - Send the greeting
           await sendGreeting(phoneNumber);
         }
       }
-
-
-
-}
-  }
-
+    }
 
     res.sendStatus(200);
   } catch (error) {
@@ -311,10 +312,6 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(500);
   }
 });
-
-
-
-
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
